@@ -4,13 +4,285 @@ author: "Zheming Bao"
 output: github_document
 ---
 
-
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(tidyverse)
+library(janitor)
+library(readxl)
 ```
 
 # Problem 1
 
+```{r subway_import}
+subway = read_csv(
+  "data/NYC_Transit_Subway_Entrance_And_Exit_Data.csv",
+  show_col_types = FALSE
+) |>
+  clean_names() |>
+  select(
+    line, station_name, station_latitude, station_longitude,
+    starts_with("route"), entry, vending, entrance_type, ada
+  ) |>
+  mutate(entry = entry == "YES")
+
+dim(subway)
+```
+
+The cleaned data contain `r nrow(subway)` entrances/exits and
+`r ncol(subway)` variables: line, station name and coordinates, routes,
+entry, vending, entrance type, and ADA status. I cleaned column names,
+selected these variables, and converted entry to logical. The data are
+not tidy because routes occupy multiple columns.
+
+```{r subway_summary}
+n_stations = subway |>
+  distinct(station_name, line) |>
+  nrow()
+
+n_ada_stations = subway |>
+  filter(ada) |>
+  distinct(station_name, line) |>
+  nrow()
+
+no_vending = subway |>
+  filter(vending == "NO") |>
+  summarise(
+    entrances_exits = n(),
+    allow_entry = sum(entry),
+    proportion_allow_entry = mean(entry)
+  )
+
+tibble(
+  distinct_stations = n_stations,
+  ada_compliant_stations = n_ada_stations
+)
+no_vending
+```
+
+There are **`r n_stations` stations** (identified by name and line),
+including **`r n_ada_stations` ADA-compliant stations**. Without vending,
+`r no_vending$allow_entry` of `r no_vending$entrances_exits` entrances/exits
+allow entry (**`r round(100 * no_vending$proportion_allow_entry, 2)`%**).
+
+```{r subway_routes}
+subway_long = subway |>
+  mutate(across(starts_with("route"), as.character)) |>
+  pivot_longer(
+    cols = starts_with("route"),
+    names_to = "route_number",
+    names_prefix = "route",
+    names_transform = list(route_number = as.integer),
+    values_to = "route_name",
+    values_drop_na = TRUE
+  )
+
+a_stations = subway_long |>
+  filter(route_name == "A") |>
+  distinct(station_name, line, ada)
+
+n_a_stations = a_stations |>
+  distinct(station_name, line) |>
+  nrow()
+
+n_a_ada_stations = a_stations |>
+  filter(ada) |>
+  distinct(station_name, line) |>
+  nrow()
+
+tibble(
+  stations_serving_a = n_a_stations,
+  ada_stations_serving_a = n_a_ada_stations
+)
+```
+
+I converted routes to character and pivoted them into route_number
+(column position) and route_name (train), dropping missing route slots.
+**`r n_a_stations` stations serve the A train; `r n_a_ada_stations` are
+ADA compliant.**
+
 # Problem 2
 
+```{r trash_wheel_import}
+mr_trash = read_excel(
+  "data/202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Mr. Trash Wheel", range = "A2:N710"
+) |>
+  clean_names() |>
+  filter(!is.na(dumpster)) |>
+  mutate(
+    year = as.integer(year),
+    date = as.Date(date),
+    sports_balls = as.integer(round(sports_balls)),
+    trash_wheel = "Mr. Trash Wheel"
+  )
+
+professor_trash = read_excel(
+  "data/202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Professor Trash Wheel", range = "A2:M135"
+) |>
+  clean_names() |>
+  filter(!is.na(dumpster)) |>
+  mutate(
+    year = as.integer(year),
+    date = as.Date(date),
+    trash_wheel = "Professor Trash Wheel"
+  )
+
+gwynnda_trash = read_excel(
+  "data/202509 Trash Wheel Collection Data.xlsx",
+  sheet = "Gwynns Falls Trash Wheel", range = "A2:L352"
+) |>
+  clean_names() |>
+  filter(!is.na(dumpster)) |>
+  mutate(
+    year = as.integer(year),
+    date = as.Date(date),
+    trash_wheel = "Gwynnda"
+  )
+
+trash_wheel = bind_rows(mr_trash, professor_trash, gwynnda_trash) |>
+  relocate(trash_wheel, dumpster)
+
+trash_wheel |>
+  count(trash_wheel, name = "observations")
+```
+
+I imported each table from row 2, cleaned names, and removed rows without
+dumpster numbers. I rounded sports balls to integers, standardized year
+and date types, and combined the tables with a wheel identifier.
+Unavailable columns remain NA.
+
+```{r trash_wheel_summary}
+professor_weight = trash_wheel |>
+  filter(trash_wheel == "Professor Trash Wheel") |>
+  summarise(total_weight_tons = sum(weight_tons, na.rm = TRUE))
+
+gwynnda_june_2022 = trash_wheel |>
+  filter(trash_wheel == "Gwynnda", year == 2022, month == "June") |>
+  summarise(total_cigarette_butts = sum(cigarette_butts, na.rm = TRUE))
+
+professor_weight
+gwynnda_june_2022
+```
+
+The combined data have **`r nrow(trash_wheel)` dumpster records** and
+**`r ncol(trash_wheel)` variables**, including wheel, date, weight (tons),
+volume (cubic yards), and litter counts. Professor Trash Wheel collected
+**`r round(professor_weight$total_weight_tons, 2)` tons** in total.
+Gwynnda collected **`r format(gwynnda_june_2022$total_cigarette_butts, big.mark = ",", scientific = FALSE, trim = TRUE)`
+cigarette butts in June 2022**.
+
+
 # Problem 3
+
+```{r baseline_import}
+baseline_raw = read_csv(
+  "data/MCI_baseline.csv", skip = 1,
+  na = c("", "NA", "."), show_col_types = FALSE
+) |>
+  clean_names() |>
+  rename(baseline_age = current_age) |>
+  mutate(
+    sex = factor(sex, levels = c(0, 1), labels = c("Female", "Male")),
+    apoe4 = factor(apoe4, levels = c(0, 1),
+                   labels = c("Non-carrier", "Carrier"))
+  )
+
+baseline = baseline_raw |>
+  filter(is.na(age_at_onset) | age_at_onset > baseline_age)
+
+baseline_summary = baseline |>
+  summarise(
+    eligible = n(),
+    developed_mci = sum(!is.na(age_at_onset)),
+    mean_baseline_age = mean(baseline_age)
+  )
+
+female_carriers = baseline |>
+  filter(sex == "Female") |>
+  summarise(proportion = mean(apoe4 == "Carrier"))
+
+baseline_summary
+female_carriers
+```
+
+I skipped the description row, treated dots as missing, cleaned names,
+and labeled sex and APOE4 status as factors. Of **`r nrow(baseline_raw)`
+recruited participants**, `r nrow(baseline_raw) - nrow(baseline)` had MCI at
+or before baseline and were excluded. The remaining **`r nrow(baseline)`
+participants** include **`r baseline_summary$developed_mci` who developed
+MCI**. Their mean baseline age is **`r round(baseline_summary$mean_baseline_age, 2)`
+years**, and **`r round(100 * female_carriers$proportion, 2)`% of women**
+are APOE4 carriers. Each row contains one participant's demographics and
+MCI onset age; missing onset age indicates no MCI during follow-up.
+
+```{r amyloid_import}
+amyloid_wide = read_csv(
+  "data/mci_amyloid.csv", skip = 1,
+  na = c("", "NA", "."), show_col_types = FALSE
+) |>
+  clean_names() |>
+  rename(id = study_id, time_0 = baseline)
+
+amyloid = amyloid_wide |>
+  pivot_longer(
+    cols = starts_with("time_"),
+    names_to = "year", names_prefix = "time_",
+    values_to = "amyloid_ratio"
+  ) |>
+  mutate(year = as.integer(year))
+
+amyloid |>
+  summarise(
+    participants = n_distinct(id),
+    rows = n(),
+    missing_ratios = sum(is.na(amyloid_ratio))
+  )
+```
+
+I skipped the description row and pivoted the five visits (years 0, 2, 4,
+6, and 8) into year and amyloid_ratio columns. The tidy data contain
+**`r n_distinct(amyloid$id)` participants** and **`r nrow(amyloid)`
+participant-visit rows**. The **`r sum(is.na(amyloid$amyloid_ratio))` missing
+ratios** are retained as NA.
+
+```{r compare_participants}
+baseline_only = anti_join(baseline, amyloid_wide, by = "id")
+amyloid_only = anti_join(amyloid_wide, baseline, by = "id")
+
+baseline_only |> select(id)
+amyloid_only |> select(id)
+
+# Separate unmatched source IDs from participants excluded at baseline.
+raw_baseline_only = anti_join(baseline_raw, amyloid_wide, by = "id")
+raw_amyloid_only = anti_join(amyloid_wide, baseline_raw, by = "id")
+```
+
+After applying the inclusion criterion, **`r nrow(baseline_only)`
+participants appear only in baseline** (IDs:
+`r paste(baseline_only$id, collapse = ", ")`), and **`r nrow(amyloid_only)`
+appear only in amyloid** (IDs: `r paste(amyloid_only$id, collapse = ", ")`).
+Before exclusion, the source files have `r nrow(raw_baseline_only)`
+baseline-only and `r nrow(raw_amyloid_only)` amyloid-only IDs. The other
+`r nrow(amyloid_only) - nrow(raw_amyloid_only)` amyloid-only participants
+were excluded for MCI at baseline.
+
+```{r merge_export}
+combined_mci = inner_join(baseline, amyloid, by = "id") |>
+  arrange(id, year)
+
+write_csv(combined_mci, "data/combined_mci.csv")
+
+combined_mci |>
+  summarise(
+    participants = n_distinct(id),
+    rows = n(),
+    missing_ratios = sum(is.na(amyloid_ratio))
+  )
+```
+
+The inner join retains **`r n_distinct(combined_mci$id)` eligible participants
+present in both datasets**, with **`r nrow(combined_mci)` rows and
+`r ncol(combined_mci)` columns**. Each row combines demographics with one
+visit's amyloid ratio; `r sum(is.na(combined_mci$amyloid_ratio))` ratios are
+missing. The result is saved as `data/combined_mci.csv`.
