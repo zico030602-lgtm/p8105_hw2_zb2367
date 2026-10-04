@@ -1,0 +1,16 @@
+---
+title: "P8105 Homework 2"
+author: "Zheming Bao"
+output: github_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problem 1
+
+# Problem 2
+
+# Problem 3
