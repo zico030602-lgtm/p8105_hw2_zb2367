@@ -182,7 +182,7 @@ The combined data have **`r nrow(trash_wheel)` dumpster records** and
 **`r ncol(trash_wheel)` variables**, including wheel, date, weight (tons),
 volume (cubic yards), and litter counts. Professor Trash Wheel collected
 **`r round((professor_weight |> pull(total_weight_tons)), 2)` tons** in total.
-Gwynnda collected **`r (gwynnda_june_2022 |> pull(total_cigarette_butts))`
+Gwynnda collected **`r format(gwynnda_june_2022 |> pull(total_cigarette_butts), big.mark = ",", scientific = FALSE)`
 cigarette butts in June 2022**.
 
 # Problem 3
